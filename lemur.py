@@ -9,10 +9,18 @@ def lemur_function_1(d, u, B, B_x, B_y, B_z, H, H_x, H_y, H_z, k0):
     sigma_z = np.array([[1, 0], [0, -1]], dtype=complex)
 
     N = len(d)
-    K_AIR_A = np.sqrt(k0 ** 2 - kk * H + 0j)
-    K_AIR_B = np.sqrt(k0 ** 2 + kk * H + 0j)
+
+    # Calculate K_AIR_A and K_AIR_B with small offset to avoid division by zero
+    K_AIR_A = np.sqrt(k0 ** 2 - kk * max(H, 1e-20) + 0j)
+    K_AIR_B = np.sqrt(k0 ** 2 + kk * max(H, 1e-20) + 0j)
+
+    # Calculate k_air with safe division
+    H_mag = max(H, 1e-20)
     k_air_term1 = 0.5 * (K_AIR_A + K_AIR_B) * sigma_0
-    k_air_term2 = (sigma_x * H_x + sigma_y * H_y + sigma_z * H_z) / (2 * max(H, 1e-20)) * (K_AIR_A - K_AIR_B)
+    if H_mag > 1e-20:
+        k_air_term2 = (sigma_x * H_x + sigma_y * H_y + sigma_z * H_z) / (2 * H_mag) * (K_AIR_A - K_AIR_B)
+    else:
+        k_air_term2 = np.zeros_like(k_air_term1)
     k_air = k_air_term1 + k_air_term2
 
     r11 = np.zeros(N, dtype=complex)
@@ -28,8 +36,12 @@ def lemur_function_1(d, u, B, B_x, B_y, B_z, H, H_x, H_y, H_z, k0):
         B_val = max(B[j], 1e-20)
         K_A = np.sqrt(k0 ** 2 - u[j] - kk * B[j] + 0j)
         K_B = np.sqrt(k0 ** 2 - u[j] + kk * B[j] + 0j)
+
         k_term1 = 0.5 * (K_A + K_B) * sigma_0
-        k_term2 = (sigma_x * B_x[j] + sigma_y * B_y[j] + sigma_z * B_z[j]) / (2 * B_val) * (K_A - K_B)
+        if B_val > 1e-20:
+            k_term2 = (sigma_x * B_x[j] + sigma_y * B_y[j] + sigma_z * B_z[j]) / (2 * B_val) * (K_A - K_B)
+        else:
+            k_term2 = np.zeros_like(k_term1)
         k = k_term1 + k_term2
 
         inv_k_air_k = np.linalg.inv(k_air + k)
@@ -39,8 +51,12 @@ def lemur_function_1(d, u, B, B_x, B_y, B_z, H, H_x, H_y, H_z, k0):
 
         EXP_A = np.exp(1j * K_A * d[j])
         EXP_B = np.exp(1j * K_B * d[j])
+
         EXP_term1 = 0.5 * (EXP_A + EXP_B) * sigma_0
-        EXP_term2 = (sigma_x * B_x[j] + sigma_y * B_y[j] + sigma_z * B_z[j]) / (2 * B_val) * (EXP_A - EXP_B)
+        if B_val > 1e-20:
+            EXP_term2 = (sigma_x * B_x[j] + sigma_y * B_y[j] + sigma_z * B_z[j]) / (2 * B_val) * (EXP_A - EXP_B)
+        else:
+            EXP_term2 = np.zeros_like(EXP_term1)
         EXP = EXP_term1 + EXP_term2
 
         I_minus = sigma_0 - EXP @ r0 @ EXP @ r0
@@ -57,11 +73,16 @@ def lemur_function_1(d, u, B, B_x, B_y, B_z, H, H_x, H_y, H_z, k0):
         t21[j] = t_matrix[1, 0]
         t22[j] = t_matrix[1, 1]
 
-    B_sub = max(B[N], 1e-10)
-    K_A = np.sqrt(k0 ** 2 - u[N] - kk * B[N] + 0j)
-    K_B = np.sqrt(k0 ** 2 - u[N] + kk * B[N] + 0j)
+    # Handle substrate
+    B_sub = max(B[-1], 1e-20)
+    K_A = np.sqrt(k0 ** 2 - u[-1] - kk * B[-1] + 0j)
+    K_B = np.sqrt(k0 ** 2 - u[-1] + kk * B[-1] + 0j)
+
     k_term1 = 0.5 * (K_A + K_B) * sigma_0
-    k_term2 = (sigma_x * B_x[N] + sigma_y * B_y[N] + sigma_z * B_z[N]) / (2 * B_sub) * (K_A - K_B)
+    if B_sub > 1e-20:
+        k_term2 = (sigma_x * B_x[-1] + sigma_y * B_y[-1] + sigma_z * B_z[-1]) / (2 * B_sub) * (K_A - K_B)
+    else:
+        k_term2 = np.zeros_like(k_term1)
     k_sub = k_term1 + k_term2
 
     inv_k_air_k_sub = np.linalg.inv(k_air + k_sub)
@@ -112,8 +133,6 @@ def lemur_function_1(d, u, B, B_x, B_y, B_z, H, H_x, H_y, H_z, k0):
     Phi22 = real_K_AIR_B * np.abs(R[1, 1]) ** 2 / real_K_AIR_B
     Reflectivity = np.array([[Phi11, Phi12], [Phi21, Phi22]])
 
-    return np.array([
-        Reflectivity[0, 0], Reflectivity[0, 1],
-        Reflectivity[1, 0], Reflectivity[1, 1],
-        0, 0, 0, 0, 0, 0  # Placeholders for other values
-    ])
+
+
+    return Reflectivity[0, 0]

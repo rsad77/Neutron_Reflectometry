@@ -14,17 +14,7 @@ from material_database import MATERIALS
 from structure_generator import generate_periodic_with_defects, generate_fibonacci_with_defects
 from lemur import lemur_function_1
 from export_analysis import export_to_excel, integrate_reflectivity, find_peaks_analysis
-
-SUPER_NULL = 1e-100
-MU_N = 1.91304272 * 5.050783699e-27  # Ядерный магнетон (J/T)
-H_BAR = 1.054571800e-34  # Приведенная постоянная Планка (J·s)
-M_N = 1.674927471e-27  # Масса нейтрона (kg)
-U_NORM = 2e-6*1e+20 * 4 * np.pi  # Нормировка SLD
-# Расчетные константы
-LAMBDA_C = 2 * np.pi / np.sqrt(U_NORM) * 1e10
-D_NORM = LAMBDA_C / (2 * np.pi)
-M_NORM = U_NORM / (1e-4 * M_N * MU_N / H_BAR ** 2)
-
+u_norm=2e-6 * 1e20 * 4 * np.pi
 
 class PlotWidget(QWidget):
     def __init__(self, parent=None):
@@ -35,6 +25,7 @@ class PlotWidget(QWidget):
         layout = QVBoxLayout()
         layout.addWidget(self.canvas)
         self.setLayout(layout)
+
 
     def plot(self, wavelengths, reflectivity):
         self.ax.clear()
@@ -50,7 +41,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Neutron Reflectivity Calculator")
-        self.setGeometry(100, 100, 1200, 800)
+        self.setGeometry(100, 100, 1000, 600)
 
         # Central widget and layout
         central_widget = QWidget()
@@ -79,11 +70,6 @@ class MainWindow(QMainWindow):
 
         self.smoothed_reflectivity = None
 
-    def normalize_parameters( d, ):
-        """Нормировка параметров согласно MATLAB-коду"""
-        "u_norm = u * 1e20 * 4 * np.pi / U_NORM"
-        d_norm = d / D_NORM
-        return  d_norm
 
     def setup_input_tab(self):
         layout = QVBoxLayout(self.input_tab)
@@ -99,13 +85,13 @@ class MainWindow(QMainWindow):
 
         self.num_periods = QSpinBox()
         self.num_periods.setRange(1, 250)
-        self.num_periods.setValue(5)
+        self.num_periods.setValue(77)
         layout_structure.addWidget(QLabel("Number of Periods:"))
         layout_structure.addWidget(self.num_periods)
 
         self.fibonacci_order = QSpinBox()
         self.fibonacci_order.setRange(1, 20)
-        self.fibonacci_order.setValue(6)
+        self.fibonacci_order.setValue(11)
         layout_structure.addWidget(QLabel("Fibonacci Order:"))
         layout_structure.addWidget(self.fibonacci_order)
 
@@ -162,7 +148,7 @@ class MainWindow(QMainWindow):
         self.material_pre.setCurrentText('Nb')
         self.material_substrate.setCurrentText('Al2O3')
         self.material_A.setCurrentText('Ni')
-        self.material_A.setCurrentText('Zr')
+        self.material_B.setCurrentText('Zr')
 
         layout_materials.addWidget(QLabel("Material A:"))
         layout_materials.addWidget(self.material_A)
@@ -177,16 +163,42 @@ class MainWindow(QMainWindow):
 
         layout.addWidget(group_materials)
 
-        group_angle = QGroupBox("Incidence Angle")
-        layout_angle = QHBoxLayout(group_angle)
-        self.theta_rad = QDoubleSpinBox()
-        self.theta_rad.setRange(0.001, 5)
-        self.theta_rad.setValue(0.15)
-        self.theta_rad.setSingleStep(0.001)
-        self.theta_rad.setDecimals(3)
-        layout_angle.addWidget(QLabel("Theta (rad):"))
-        layout_angle.addWidget(self.theta_rad)
-        layout.addWidget(group_angle)
+        # Add this to the setup_input_tab method, after the material selection group
+        # Magnetic field group
+        group_magnetic = QGroupBox("Magnetic Field Parameters")
+        layout_magnetic = QGridLayout(group_magnetic)
+
+        self.H_x = QDoubleSpinBox()
+        self.H_x.setRange(-100, 100)
+        self.H_x.setValue(0.0)
+        layout_magnetic.addWidget(QLabel("H_x (T):"), 0, 0)
+        layout_magnetic.addWidget(self.H_x, 0, 1)
+
+        self.H_y = QDoubleSpinBox()
+        self.H_y.setRange(-100, 100)
+        self.H_y.setValue(0.0)
+        layout_magnetic.addWidget(QLabel("H_y (T):"), 1, 0)
+        layout_magnetic.addWidget(self.H_y, 1, 1)
+
+        self.H_z = QDoubleSpinBox()
+        self.H_z.setRange(-100, 100)
+        self.H_z.setValue(0.000000001)
+        layout_magnetic.addWidget(QLabel("H_z (T):"), 2, 0)
+        layout_magnetic.addWidget(self.H_z, 2, 1)
+
+        self.theta = QDoubleSpinBox()
+        self.theta.setRange(0, 90)
+        self.theta.setValue(5e-3)
+        self.theta.setDecimals(6)
+        layout_magnetic.addWidget(QLabel("Theta (rad):"), 3, 0)
+        layout_magnetic.addWidget(self.theta, 3, 1)
+
+        # Normalization constants
+        self.u_norm = 2e-6 * 1e20 * 4 * np.pi
+        self.d_norm = (2 * np.pi) / np.sqrt(self.u_norm) * 1e10
+        self.M_norm = self.u_norm / (1e-4 * 1.674927471e-27 * 1.91304272 * 5.050783699e-27 / (1.054571800e-34) ** 2)
+
+        layout.addWidget(group_magnetic)
 
         # Wavelength range
         group_wavelength = QGroupBox("Wavelength Range (Å)")
@@ -201,7 +213,7 @@ class MainWindow(QMainWindow):
         self.wavelength_min.setSingleStep(0.001)
 
         self.wavelength_max = QDoubleSpinBox()
-        self.wavelength_max.setRange(0.001, 10.0)
+        self.wavelength_max.setRange(0.000001, 10.0)
         self.wavelength_max.setValue(5)
         layout_wavelength.addWidget(QLabel("Max:"))
         layout_wavelength.addWidget(self.wavelength_max)
@@ -209,12 +221,12 @@ class MainWindow(QMainWindow):
         self.wavelength_max.setSingleStep(0.001)
 
         self.wavelength_step = QDoubleSpinBox()
-        self.wavelength_step.setRange(0.000001, 1)
+        self.wavelength_step.setRange(0.000000001, 1)
         self.wavelength_step.setValue(0.01)
         layout_wavelength.addWidget(QLabel("Step:"))
         layout_wavelength.addWidget(self.wavelength_step)
-        self.wavelength_step.setDecimals(6)
-        self.wavelength_step.setSingleStep(0.000001)
+        self.wavelength_step.setDecimals(9)
+        self.wavelength_step.setSingleStep(0.000000001)
 
         layout.addWidget(group_wavelength)
 
@@ -366,7 +378,6 @@ class MainWindow(QMainWindow):
         dB = self.thickness_B.value()
         d_coating = self.thickness_coating.value()
         d_pre = self.thickness_pre.value()
-        theta_rad = self.theta_rad.value()
 
         # Get defect parameters
         defect_prob = self.defect_prob.value()
@@ -385,10 +396,21 @@ class MainWindow(QMainWindow):
         mat_pre = MATERIALS[self.material_pre.currentText()]
         mat_substrate = MATERIALS[self.material_substrate.currentText()]
 
-        # Build layers with defects and replacements
-        d_list = [d_coating]
-        u_list = [mat_coating.u_real + 1j * mat_coating.u_imag]
+        # Build layer structure
+        d_list = []
+        u_list = []
+        M_x_list = []
+        M_y_list = []
+        M_z_list = []
 
+        # Add coating layer
+        d_list.append(d_coating)
+        u_list.append(mat_coating.u_real * 1e-6 + 1j * mat_coating.u_imag * 1e-6)
+        M_x_list.append(mat_coating.M_x)
+        M_y_list.append(mat_coating.M_y)
+        M_z_list.append(mat_coating.M_z)
+
+        # Generate main structure
         if structure_type == "Periodic":
             structure = generate_periodic_with_defects(
                 dA, dB, num_periods, defect_prob, dev_A, dev_B, seed,
@@ -399,95 +421,148 @@ class MainWindow(QMainWindow):
                 fib_order, dA, dB, defect_prob, dev_A, dev_B, seed,
                 replace_prob_A, replace_prob_B
             )
+
         self.current_structure = structure
-        self.integral_value = trapezoid(self.reflectivity, self.wavelengths)
-        self.peak_data = find_peaks_analysis(self.wavelengths, self.reflectivity)
 
-        # Обновляем интерфейс
-        self.integral_label.setText(f"Integral: {self.integral_value:.6e}")
-        self.update_peaks_table()
-
+        # Add main structure layers
         for layer_type, thickness in structure:
             d_list.append(thickness)
             if layer_type == 'A':
-                u_val = mat_A.u_real + 1j * mat_A.u_imag
+                material = mat_A
             elif layer_type == 'A_alt':
-                u_val = mat_A_alt.u_real + 1j * mat_A_alt.u_imag
+                material = mat_A_alt
             elif layer_type == 'B':
-                u_val = mat_B.u_real + 1j * mat_B.u_imag
+                material = mat_B
             elif layer_type == 'B_alt':
-                u_val = mat_B_alt.u_real + 1j * mat_B_alt.u_imag
-            u_list.append(u_val /2)
+                material = mat_B_alt
 
+            u_list.append(material.u_real * 1e-6 + 1j * material.u_imag * 1e-6)
+            M_x_list.append(material.M_x)
+            M_y_list.append(material.M_y)
+            M_z_list.append(material.M_z)
+
+        # Add pre-layer
         d_list.append(d_pre)
-        u_list.append((mat_pre.u_real + 1j * mat_pre.u_imag)/2)
-        u_list.append((mat_substrate.u_real + 1j * mat_substrate.u_imag)/2)
+        u_list.append(mat_pre.u_real * 1e-6 + 1j * mat_pre.u_imag * 1e-6)
+        M_x_list.append(mat_pre.M_x)
+        M_y_list.append(mat_pre.M_y)
+        M_z_list.append(mat_pre.M_z)
 
-        # Prepare magnetic parameters
-        N = len(d_list)
-        B = np.zeros(N + 1)
-        B_x = np.zeros(N + 1)
-        B_y = np.zeros(N + 1)
-        B_z = np.zeros(N + 1)
-        H = 0
-        H_x = 0
-        H_y = 0
-        H_z = 0
+        # Add substrate (thickness doesn't matter for substrate)
+        d_list.append(1e10)  # Large number for semi-infinite substrate
+        u_list.append(mat_substrate.u_real * 1e-6 + 1j * mat_substrate.u_imag * 1e-6)
+        M_x_list.append(mat_substrate.M_x)
+        M_y_list.append(mat_substrate.M_y)
+        M_z_list.append(mat_substrate.M_z)
+
+        # Convert to numpy arrays
+        d_array = np.array(d_list)
+        u_array = np.array(u_list)
+        M_x_array = np.array(M_x_list)
+        M_y_array = np.array(M_y_list)
+        M_z_array = np.array(M_z_list)
+
+        # Normalization constants from дополнения.txt
+        u_norm = 2e-6 * 1e20 * 4 * np.pi
+        d_norm = (2 * np.pi) / np.sqrt(u_norm) * 1e10
+        M_norm = u_norm / (1e-4 * 1.674927471e-27 * 1.91304272 * 5.050783699e-27 / (1.054571800e-34) ** 2)
+
+        #Normalize parameters
+        u_normalized = u_array * 1e20 * 4 * np.pi/u_norm
+        d_normalized = d_array/d_norm
+        M_x_normalized = M_x_array/M_norm
+        M_y_normalized = M_y_array/M_norm
+        M_z_normalized = M_z_array/M_norm
+
+       # External magnetic field (normalized)
+        H_x = self.H_x.value() / M_norm
+        H_y = self.H_y.value() / M_norm
+        H_z = self.H_z.value() / M_norm
+        H = np.sqrt(H_x ** 2 + H_y ** 2 + H_z ** 2)
+
+        # Total B field (B = H + M)
+        B_x = H_x + M_x_normalized
+        B_y = H_y + M_y_normalized
+        B_z = H_z + M_z_normalized
+        B = np.sqrt(B_x ** 2 + B_y ** 2 + B_z ** 2)
 
         # Calculate reflectivity
-        start = round(self.wavelength_min.value(), 3)
-        stop = round(self.wavelength_max.value(), 3)
-        step = round(self.wavelength_step.value(), 3)
-        num_points = int((stop - start) / step) + 1
-        wavelengths = np.linspace(start, stop, num_points)
-        wavelengths = np.round(wavelengths, 3)
+        theta = self.theta.value()
+        wavelengths = np.linspace(self.wavelength_min.value(),
+                                  self.wavelength_max.value(),
+                                  int((self.wavelength_max.value() - self.wavelength_min.value()) / self.wavelength_step.value()) + 1)
 
-        reflectivity = []
+        reflectivity = np.zeros_like(wavelengths, dtype=float)
 
-        for wl in wavelengths:
-            k0 = 2 * np.pi * theta_rad / wl
-            result = lemur_function_1(
-                d_list, u_list, B, B_x, B_y, B_z,
-                H, H_x, H_y, H_z, k0
-            )
-            reflectivity.append(result[0])
+        for i, wl in enumerate(wavelengths):
+            k0 = 2 * np.pi * np.sin(theta) / (wl * np.sqrt(u_norm)) * 1e10
+            try:
+                # Get the reflectivity value
+                reflectivity[i] = np.real(lemur_function_1(
+                    d_normalized,
+                    u_normalized,
+                    B, B_x, B_y, B_z,
+                    H, H_x, H_y, H_z,
+                    k0
+                ))
+            except Exception as e:
+                print(f"Error at wavelength {wl}: {str(e)}")
+                reflectivity[i] = 0  # Default value if calculation fails
+
+            # Ensure we have valid finite values
+        reflectivity = np.nan_to_num(reflectivity, nan=0.0, posinf=0.0, neginf=0.0)
 
         self.wavelengths = wavelengths
-        self.reflectivity = np.array(reflectivity)
+        self.reflectivity = reflectivity
 
         # Plot results
-        self.smoothed_reflectivity = None
-
-        # Применение сглаживания если включено
-        if self.smoothing_enabled.isChecked():
-            self.smoothed_reflectivity = smooth_data(
-                reflectivity,
-                window_size=self.smoothing_window.value(),
-                polynomial_order=self.smoothing_order.value(),
-                method=self.smoothing_method.currentText()
-            )
-
-            # Построение графиков
-            self.plot_widget.ax.clear()
-            self.plot_widget.ax.semilogy(wavelengths, reflectivity,
-                                         label="Original", alpha=0.7)
-            self.plot_widget.ax.semilogy(wavelengths, self.smoothed_reflectivity,
-                                         label="Smoothed", linewidth=2)
-            self.plot_widget.ax.legend()
-            self.plot_widget.ax.set_xlabel('Wavelength (Å)')
-            self.plot_widget.ax.set_ylabel('Reflectivity')
-            self.plot_widget.ax.set_title('Neutron Reflectivity')
-            self.plot_widget.ax.grid(True, which="both", ls="--")
-            self.plot_widget.canvas.draw()
-        else:
-            # Построение только оригинальных данных
+        if len(wavelengths) == len(reflectivity):
             self.plot_widget.plot(wavelengths, reflectivity)
+        else:
+            print(f"Dimension mismatch: wavelengths ({len(wavelengths)}), reflectivity ({len(reflectivity)})")
+
+        # Calculate integral and peaks
+            self.integral_value = trapezoid(reflectivity, wavelengths)
+            self.peak_data = find_peaks_analysis(wavelengths, reflectivity)
+
+        # Update UI
+            self.integral_label.setText(f"Integral: {self.integral_value:.6e}")
+            self.update_peaks_table()
 
         # Print structure info
         print(f"Generated structure with {len(structure)} layers")
         for i, (layer_type, thickness) in enumerate(structure):
             material = layer_type.replace('_alt', "'")
             print(f"Layer {i + 1}: {material}, thickness = {thickness:.2f} Å")
+            # Применение сглаживания если включено
+            if self.smoothing_enabled.isChecked():
+                self.smoothed_reflectivity = smooth_data(
+                    reflectivity,
+                    window_size=self.smoothing_window.value(),
+                    polynomial_order=self.smoothing_order.value(),
+                    method=self.smoothing_method.currentText()
+                )
+                print("Normalized u:", u_normalized)
+                print("Normalized d:", d_normalized)
+                print("Normalized M:", M_x_normalized, M_y_normalized, M_z_normalized)
+                print("First k0 value:", 2 * np.pi * np.sin(theta) / (wavelengths[0] * np.sqrt(u_norm)) * 1e10)
+                print("First reflectivity value:", reflectivity[0])
+
+                # Построение графиков
+                self.plot_widget.ax.clear()
+                self.plot_widget.ax.semilogy(wavelengths, reflectivity,
+                                             label="Original", alpha=0.7)
+                self.plot_widget.ax.semilogy(wavelengths, self.smoothed_reflectivity,
+                                             label="Smoothed", linewidth=2)
+                self.plot_widget.ax.legend()
+                self.plot_widget.ax.set_xlabel('Wavelength (Å)')
+                self.plot_widget.ax.set_ylabel('Reflectivity')
+                self.plot_widget.ax.set_title('Neutron Reflectivity')
+                self.plot_widget.ax.grid(True, which="both", ls="--")
+                self.plot_widget.canvas.draw()
+            else:
+                # Построение только оригинальных данных
+                self.plot_widget.plot(wavelengths, reflectivity)
 
     def export_data(self):
         filename, _ = QFileDialog.getSaveFileName(
